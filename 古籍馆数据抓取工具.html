@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+    <title>GJWSpider</title>
+    <script src="https://cdn.bootcss.com/jquery/1.10.2/jquery.min.js"></script>
+    <script>
+        //--------------------------------------------------------------------------------//
+
+        window.onload = function(val) {
+            initial();
+        }
+
+        var c = function(e) {
+            return document.createElement(e);
+        }
+
+        var print = function(str) {
+            console.log(str);
+        }
+
+        //--------------------------------------------------------------------------------//
+        var initial = function() {
+            table1 = document.getElementById("table1");
+        }
+
+        var setText = function(str) {
+            $("#index").text(str);
+        }
+
+        var setProgress = function(x, sum, id) {
+            var p = $(id)[0];
+
+            p.style.visibility = "visible";
+            var i = 100 * x / sum
+            p.style.width = i + "%";
+        }
+
+        var hideProgress = function(x) {
+            $(x)[0].style.visibility = "hidden";
+        }
+
+        var clearAll = function() {
+            clearTable();
+            htmlVol = [];
+            volume = [];
+        }
+
+        //==========================================================================///
+
+        var gjUrl;
+        var keyValue;
+        var htmlVol = [];
+        var getHtml = function(x) {
+            loadFinished = false;
+            keyValue = '[' + x + ']';
+            gjUrl = 'http://www.gujiguan.com/Search_Result.aspx?Type=0&Field=all&Value=' + keyValue;
+            $.ajax({
+                url: gjUrl,
+                success: function(result) {
+                    editText = "" + result;
+                    process();
+                },
+                error: function(a, b) {
+                    alert(a + "|" + b);
+                }
+            });
+        }
+
+        var post = function(index, keyVal) {
+            $.post(gjUrl, {
+                    top11$ScriptManager1: 'UpdatePanel2|AspNetPager2',
+                    keyValue: keyVal,
+                    SearchType: '0',
+                    dropProv: '题名A-Z',
+                    __EVENTTARGET: 'AspNetPager2',
+                    __EVENTARGUMENT: index,
+                    __ASYNCPOST: true
+                },
+                function(data, status) {
+                    // $("#text1").val(data);
+                    // $("#index").text(keyValue + "-" + index);
+                    editText = "" + data;
+                    process();
+                });
+
+        }
+
+        var get = function(auto) {
+            editText = null;
+            autoMode = auto;
+            if (auto) {
+                var l = $("#num2").val();
+                var h = $("#num3").val();
+                l = parseInt(l);
+                h = parseInt(h);
+
+                if (l >= h) {
+                    alert("error:" + l + "<=" + h);
+                    return;
+                } else if (l < 0 && h > 2017) {
+                    alert("error:" + l + "-" + h);
+                    return;
+                }
+                setTimeout(autoGet, 1);
+
+                autoStart = l;
+                autoIndex = autoStart;
+                autoEnd = h;
+            } else {
+                var num = $("#num1").val();
+                if (num > 0 && num < 2017) {
+                    getOne(num);
+                } else {
+                    alert("error:" + num);
+                    $("#num1").val("");
+                }
+            }
+        }
+
+        var autoIndex;
+        var autoStart;
+        var autoEnd;
+        var autoMode;
+        var autoGet = function() {
+            if (loadFinished === false) {
+                setTimeout(autoGet, 5);
+            } else if (autoIndex <= autoEnd) {
+                getOne(autoIndex);
+                setProgress(autoIndex - autoStart, autoEnd - autoStart, "#progress2");
+                ++autoIndex;
+                setTimeout(autoGet, 5);
+            } else {
+                hideProgress("#progress2");
+                creatTable();
+            }
+        }
+
+        var getOne = function(num) {
+            pageIndex = 1;
+            editText = "";
+            htmlVol = [];
+            getHtml(num);
+        }
+
+        var editText;
+        var pageIndex;
+        var pageCount;
+        var volume = [];
+        var vLength;
+        var loadFinished;
+        var process = function() {
+            pageCount = getBetween(editText, "您檢索到<font style='color:#ff0000'>", "</font>種書", "small");
+            pageCount = parseInt(pageCount);
+            pageCount = Math.ceil(pageCount / 10);
+
+            if (pageCount === 0) {
+                setText("Progress:" + keyValue + "-0/0");
+                loadFinished = true;
+                $("#tips").text("检索到书籍数量：" + volume.length);
+                hideProgress("#progress1");
+                return;
+            } else if (pageCount === 1) {
+                htmlVol.push(editText);
+                setText("Progress:" + keyValue + "-1/1");
+                setProgress(1, 1, "#progress1");
+            } else if (pageIndex <= pageCount) {
+                htmlVol.push(editText);
+                setText("Progress:" + keyValue + "-" + pageIndex + "/" + pageCount);
+                setProgress(pageIndex, pageCount, "#progress1");
+                setTimeout(post(++pageIndex, keyValue), 1);
+                return;
+            }
+
+            if (htmlVol.length != pageCount)
+                alert("error:" + keyValue + htmlVol.length + "\\" + pageCount);
+
+            for (var i = 0; i < htmlVol.length; i++) {
+                editText = htmlVol[i];
+                getContent(i);
+            }
+            hideProgress("#progress1");
+            if (autoMode === false)
+                creatTable();
+            $("#tips").text("检索到书籍数量：" + volume.length);
+            loadFinished = true;
+        }
+
+        var getContent = function(x) {
+            editText = getBetween(editText, "<tr>", "</tr>", "long");
+            vLength = volume.length;
+            links = [];
+            while (editText.lastIndexOf("<table") != -1) {
+                var s = getBetween(editText, '<table class="bottom', "</table>", "short");
+                var link = getBetween(s, "收藏<", ">閱讀</a>", "short");
+                link = getBetween(link, '<a href', '閱讀</a>', "short");
+                link = link.substring(0, link.indexOf("ef='") + 4) + "http://www.gujiguan.com/" + link.substring(link.indexOf("ef='") + 4);
+                link = remove(link, "\r\n");
+                link = remove(link, "  ");
+                s = getBetween(s, "<div", "</div>", "long");
+                volume.push(s);
+                links.push(link);
+                editText = editText.replace('<table', "<ttt");
+                editText = editText.replace('</table>', "</ttt>");
+            }
+
+            for (var i = 0; i < volume.length - vLength; i++) {
+                var str = "";
+                var vol = volume[vLength + i];
+                while (vol.indexOf("<span") != -1) {
+                    var s = getBetween(vol, "<span", "</span>", "short");
+                    s = getBetween(s, '>', '</span>', 'small');
+                    str += "##$" + s;
+                    vol = vol.replace('<span', "<ttt");
+                    vol = vol.replace('</span>', "</ttt>");
+                }
+                str = remove(str, "\r\n");
+                str = remove(str, "  ");
+                str += links[i];
+                volume[vLength + i] = keyValue + "-" + (x * 10 + i + 1) + str;
+            }
+        }
+
+
+        //==========================================================================///
+
+        var getBetween = function(s, a, b, ls) {
+            if (ls === "long") {
+                if (s.indexOf(a) != -1 && s.lastIndexOf(b) != -1)
+                    s = s.substring(s.indexOf(a), s.lastIndexOf(b) + b.length);
+                else
+                    s = "";
+            } else if (ls === "short") {
+                if (s.indexOf(a) != -1 && s.indexOf(b) != -1)
+                    s = s.substring(s.indexOf(a), s.indexOf(b) + b.length);
+                else
+                    s = "";
+                // } else if (ls === "tiny") {
+                //     if (s.indexOf(a) != -1 && s.indexOf(b) != -1)
+                //         s = s.substring(s.indexOf(a), s.indexOf(b));
+                //     else
+                //         s = "";
+            } else if (ls === "small") {
+                if (s.indexOf(a) != -1 && s.indexOf(b) != -1)
+                    s = s.substring(s.indexOf(a) + a.length, s.indexOf(b));
+                else
+                    s = "";
+            }
+
+            return s;
+        }
+
+        var removeBetween = function(s, a, b, ls) {
+            if (ls === "long") {
+                while (s.lastIndexOf(a) != -1 && s.lastIndexOf(b) != -1) {
+                    s = s.substring(0, s.indexOf(a)) + s.substring(s.indexOf(b) + b.length);
+                }
+            } else if (ls === "short") {
+                s = s.substring(0, s.indexOf(a)) + s.substring(s.indexOf(b) + b.length);
+            } else if (ls === "small") {
+                s = s.substring(0, s.indexOf(a)) + s.substring(s.indexOf(b));
+            }
+
+            return s;
+        }
+
+        var remove = function(str, x) {
+            while (str.indexOf(x) != -1) {
+                str = str.replace(x, "");
+            }
+            return str;
+        }
+
+        //==========================================================================///
+
+
+
+
+        //--------------------------------------------------------------------------------//
+
+        var head = ["序号", "书名", "卷数", "作者", "版本", "时间", "刻板机构", "出处", "位置", "类别", "备注", "其它"];
+        var table1;
+        var creatTable = function() {
+            if (editText === "") return;
+            clearTable();
+            addHead(table1, head);
+            var cells;
+            var v;
+            for (var i = 0; i < volume.length; i++) {
+                v = volume[i];
+                v = v.split("##$");
+                addCell(table1, v);
+            }
+        }
+
+        var clearTable = function() {
+            var obj = document.getElementById("table1");
+            var newObj = c("table");
+            newObj.id = obj.id;
+            table1 = newObj;
+            obj.parentNode.appendChild(newObj);
+            obj.parentNode.removeChild(obj);
+        }
+
+        var addHead = function(tb, ary) {
+            var newRow = tb.insertRow(-1);
+            for (var j = 0; j < ary.length; j++) {
+                var cell = newRow.insertCell(-1);
+                cell.innerHTML = "<b>" + ary[j] + "</b>";
+            }
+        }
+
+        var addCell = function(tb, ary) {
+            var newRow = tb.insertRow(-1);
+            for (var j = 0; j < ary.length; j++) {
+                var cell = newRow.insertCell(-1);
+                cell.innerHTML = ary[j];
+
+                // if (ary[j].indexOf("日本") != -1) {
+
+                // }
+            }
+        }
+
+
+        var hide = function() {
+            document.getElementById("header").style.display = "none";
+            document.getElementById("ctrl").style.display = "none";
+        }
+
+        //----------------------------------------------------------------------------------------------//
+    </script>
+
+    <style>
+        body {
+            margin: 0px;
+            font-family: "等线", "微软雅黑", "黑体";
+        }
+        
+        h1.header {
+            cursor: default;
+            font-size: 34px;
+            overflow: hidden;
+            padding: 10px;
+            font-weight: 400;
+            color: white;
+            text-align: center;
+        }
+        
+        #header {
+            padding-bottom: 2px;
+            padding-top: 2px;
+            background-color: #3C7BBE;
+        }
+        
+        .container {
+            width: 96%;
+            text-align: left;
+            margin: 0 auto;
+            margin-top: 15px;
+            margin-bottom: 15px;
+            padding: 10px;
+            border-radius: 6px;
+            background-color: #ddeeff;
+        }
+        
+        #container2 {
+            width: 96%;
+            text-align: left;
+            margin: 0 auto;
+            overflow: auto;
+            padding: 5px;
+            border-radius: 6px;
+        }
+        
+        .container .Volume {
+            width: 48.5%;
+            margin: 0.5%;
+            display: inline-block;
+        }
+        
+        textarea.text {
+            background-color: #fcfcfc;
+            font-family: "华文中宋", "宋体";
+            resize: none;
+            font-size: 16px;
+            margin: 0 auto;
+            width: 99%;
+            height: 380px;
+            overflow: auto;
+        }
+        
+        #ctrl {
+            font-family: "华文中宋", "宋体";
+            font-size: 16px;
+            text-align: center;
+            background-color: #f8f8f8;
+            overflow: hidden;
+            padding: 15px;
+            padding-left: 5%;
+            padding-right: 5%;
+        }
+        
+        #ctrl input.num {
+            margin: 1px;
+            width: 120px;
+            height: 20px;
+        }
+        
+        #ctrl input.lnum {
+            margin: 1px;
+            width: 240px;
+            height: 20px;
+        }
+        
+        #ctrl input.btn {
+            margin: 1px;
+            width: 100px;
+            height: 27px;
+            background-color: #e8f0ff;
+            border: 1px solid gray;
+        }
+        
+        #index {
+            display: inline-block;
+            margin: 3px;
+            color: red;
+            font-size: 16px;
+            padding: 4px;
+            padding-left: 10px;
+            padding-right: 10px;
+        }
+        
+        #tips {
+            display: inline-block;
+            margin: 3px;
+            /*color: red;*/
+            font-size: 16px;
+            padding: 4px;
+        }
+        /*=================================================================*/
+        
+        .title {
+            font-weight: 400;
+            padding: 5px;
+            margin: 0px;
+            font-size: 20px;
+            text-align: left;
+        }
+        
+        .btn {
+            font-size: 14px;
+            background-color: #f0f0ff;
+            font-family: "华文中宋", "宋体";
+            cursor: pointer;
+        }
+        
+        .btn:hover {
+            background-color: #e0e0e0;
+        }
+        
+        #progress1 {
+            visibility: hidden;
+            width: 30%;
+            height: 2px;
+            margin-bottom: 2px;
+            background-color: #00ff00;
+            border-radius: 2px;
+        }
+        
+        #progress2 {
+            visibility: hidden;
+            width: 50%;
+            height: 2px;
+            margin-bottom: 2px;
+            background-color: #ff4488;
+            border-radius: 2px;
+        }
+        /*=================================================================*/
+        
+        table {
+            font-family: "华文中宋", "宋体";
+            width: 100%;
+            text-align: left;
+            border: 1px solid gray;
+            -moz-user-select: text;
+            -webkit-user-select: text;
+            -ms-user-select: text;
+            border-collapse: collapse;
+        }
+        
+        td {
+            vertical-align: text-top;
+            font-size: 14px;
+            border: 1px solid lightgray;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="header">
+        <h1 class="header">古籍馆-数据抓取工具(IE11版)</h1>
+    </div>
+
+    <div id="ctrl">
+        Num:
+        <input type="number" id="num1" class="lnum" value="1700">
+        <input type="button" class="btn" onclick="get(false)" value="检索"> From:
+        <input type="number" id="num2" class="num" value="1700"> To:
+        <input type="number" id="num3" class="num" value="1710">
+        <input type="button" class="btn" onclick="get(true)" value="自动检索">
+        <!--<input type="button" class="btn" onclick="hide()" value="隱藏">-->
+        <input type="button" class="btn" onclick="clearAll()" value="清除表格">
+        <p id="index"></p>
+        <p id="tips"></p>
+    </div>
+
+
+    <div id="container1" class="container" style="display:none">
+        <div class="Volume">
+            <p class="title">Text1</p>
+            <textarea class="text" id="text1" autofocus="autofocus"></textarea>
+            <input type="button" class="inputs" onclick="process1()" value="Process"></input>
+        </div>
+        <div class="Volume">
+            <p class="title">Text2</p>
+            <textarea class="text" id="text2"></textarea>
+            <input type="button" class="inputs" onclick="creatTable()" value="CreatTable"></input>
+        </div>
+        <div class="Volume">
+            <p class="title">Text3</p>
+            <textarea class="text" id="text3"></textarea>
+            <input type="button" class="inputs" onclick="process(3)" value="Process"></input>
+        </div>
+        <div class="Volume">
+            <p class="title">Text4</p>
+            <textarea class="text" id="text4"></textarea>
+            <input type="button" class="inputs" onclick="process(4)" value="Process"></input>
+        </div>
+    </div>
+
+
+    <div id="container2">
+        <div id="progress1" class="progress"></div>
+        <div id="progress2" class="progress"></div>
+        <table id="table1" cellspacing="0"></table>
+    </div>
+
+
+</body>
+
+</html>
